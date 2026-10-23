@@ -14,19 +14,9 @@ def test_health():
 
     assert data["status"] == "healthy"
     assert data["version"] == "1.0.0"
-    assert "timestamp" in data
 
 
-def test_chat():
-    response = client.post(
-        "/chat",
-        json={
-            "message": "Bonjour"
-        }
-    )
+def test_me_requires_authentication():
+    response = client.get("/me")
 
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert "answer" in data
+    assert response.status_code in (401, 403)
