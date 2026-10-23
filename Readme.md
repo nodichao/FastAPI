@@ -1,263 +1,158 @@
-# FastAPI Backend — API d'assistance
+# FastAPI Conversations API
 
-Backend REST développé avec **FastAPI** dans le cadre d'un exercice d'intégration d'API.
+Backend REST developpe avec FastAPI. L'API gere des utilisateurs, des conversations et des messages persistants dans SQLite. Les reponses de l'assistant sont generees par Groq.
 
-L'objectif est de construire une API simple permettant de :
+## Technologies
 
-* vérifier l'état du serveur ;
-* envoyer un message à une API de chat ;
-* générer un quiz à partir d'un thème ;
-* générer un résumé à partir d'un texte.
+- Python
+- FastAPI et Pydantic
+- SQLAlchemy avec SQLite
+- JWT pour l'authentification
+- pwdlib pour le hashage des mots de passe
+- Groq pour les reponses de l'assistant
+- Pytest et TestClient
 
-> Les fonctionnalités d'IA sont volontairement simulées dans cette première version. L'objectif du checkpoint est principalement de mettre en place la structure de l'API, la validation des données et les tests.
-
-## Technologies utilisées
-
-* Python
-* FastAPI
-* Pydantic
-* Uvicorn
-* Pytest
-* HTTPX / TestClient
-
-## Structure du projet
+## Structure
 
 ```text
 FastAPI/
-├── main.py
+├── app/
+│   ├── database.py
+│   ├── dependencies.py
+│   ├── main.py
+│   ├── models.py
+│   ├── routes.py
+│   ├── schemas.py
+│   └── security.py
+├── docs/
+│   ├── api-test-report.md
+│   └── security-persistence-report.md
 ├── tests/
 │   └── test_api.py
-├── docs/
-│   └── api-test-report.md
+├── .env
 ├── requirements.txt
-└── README.md
+└── Readme.md
 ```
 
 ## Installation
 
-### 1. Cloner le projet
-
-```bash
-git clone <URL_DU_PROJET>
-cd FastAPI
-```
-
-### 2. Créer un environnement virtuel
-
-```bash
+```powershell
 python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-### 3. Activer l'environnement virtuel
+Configurez ensuite `.env` :
 
-#### Windows
-
-```bash
-.venv\Scripts\activate
+```env
+SECRET_KEY=une-cle-secrete-aleatoire-d-au-moins-32-octets
+GROQ_API_KEY=votre-cle-groq
 ```
 
-#### Linux / macOS
-
-```bash
-source .venv/bin/activate
-```
-
-### 4. Installer les dépendances
-
-```bash
-pip install -r requirements.txt
-```
+Ne commitez jamais `.env`. La base SQLite locale est creee dans `app.db` au demarrage. Les tables sont initialisees par SQLAlchemy si elles n'existent pas.
 
 ## Lancer l'API
 
-Depuis le dossier du projet :
+Depuis la racine du projet :
 
-```bash
-fastapi dev main.py
+```powershell
+uvicorn app.main:app --reload
 ```
 
-L'API sera disponible à l'adresse :
+L'API est disponible sur `http://127.0.0.1:8000`.
 
-```text
-http://127.0.0.1:8000
-```
+Documentation interactive :
 
-Il est également possible d'utiliser Uvicorn directement :
+- Swagger UI : `http://127.0.0.1:8000/docs`
+- ReDoc : `http://127.0.0.1:8000/redoc`
 
-```bash
-uvicorn main:app --reload
-```
+## Endpoints
 
-## Documentation de l'API
+### Verification
 
-FastAPI génère automatiquement une documentation interactive.
-
-### Swagger UI
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-### ReDoc
-
-```text
-http://127.0.0.1:8000/redoc
-```
-
-Swagger UI permet notamment de tester directement les différentes routes.
-
-# Endpoints
-
-## 1. Health Check
-
-### `GET /health`
-
-Permet de vérifier que l'API fonctionne.
-
-Cette route ne fait appel à aucun modèle d'IA.
-
-### Exemple de réponse
+`GET /health` retourne :
 
 ```json
 {
   "status": "healthy",
-  "version": "1.0.0",
-  "timestamp": "2026-09-15T18:30:00"
+  "version": "1.0.0"
 }
 ```
 
-## 2. Chat
+### Utilisateurs
 
-### `POST /chat`
-
-Reçoit un message utilisateur et retourne une réponse structurée.
-
-### Requête
+`POST /users` cree un compte. Exemple :
 
 ```json
 {
-  "message": "Bonjour"
+  "username": "alice",
+  "email": "alice@example.com",
+  "password": "mot-de-passe-securise"
 }
 ```
 
-### Réponse
+Le mot de passe brut n'est jamais stocke ; seul son hash est persiste.
+
+### Authentification
+
+`POST /auth` verifie l'email et le mot de passe et retourne un JWT :
 
 ```json
 {
-  "answer": "Welcome to the chat endpoint!"
+  "email": "alice@example.com",
+  "password": "mot-de-passe-securise"
 }
 ```
 
-### Validation
+Pour les routes protegees, envoyez le token dans l'en-tete :
 
-Le champ `message` :
+```http
+Authorization: Bearer <access_token>
+```
 
-* est obligatoire ;
-* doit contenir au moins 1 caractère ;
-* peut contenir au maximum 1000 caractères.
+`GET /me` retourne l'utilisateur authentifie.
 
-Une requête invalide retourne une erreur HTTP `422`.
+### Conversations
 
-## 3. Quiz
+`POST /conversations` demarre une conversation pour l'utilisateur authentifie.
 
-### `POST /quiz`
-
-Permet de générer une liste de questions à partir d'un thème.
-
-### Requête
+`POST /messages` ajoute un message et genere une reponse assistant. Corps minimal :
 
 ```json
 {
-  "topic": "Python",
-  "nbQuestions": 3
+  "conversation_id": "uuid-de-la-conversation",
+  "content": "Bonjour"
 }
 ```
 
-### Réponse
+Si `conversation_id` est omis, une nouvelle conversation est creee. Le message utilisateur et la reponse assistant sont tous deux enregistres dans `messages`.
 
-```json
-{
-  "questions": [
-    "Question 1 about Python",
-    "Question 2 about Python",
-    "Question 3 about Python"
-  ]
-}
+Le serveur verifie que la conversation appartient a l'utilisateur authentifie avant d'y ajouter un message. Une conversation appartenant a un autre utilisateur est refusee.
+
+## Persistance et securite
+
+Les tables `users`, `conversations` et `messages` sont definies dans `app/models.py`. Les identifiants sont des UUID et les conversations/messages sont rattaches a leur proprietaire par `user_id`.
+
+Le flux d'authentification est le suivant :
+
+1. L'utilisateur s'inscrit avec `POST /users`.
+2. Le mot de passe est hache avec `pwdlib`.
+3. L'utilisateur se connecte avec `POST /auth`.
+4. L'API emet un JWT contenant l'identifiant utilisateur dans `sub`.
+5. `get_current_user` verifie le token et charge l'utilisateur.
+6. Les routes protegees appliquent la regle de propriete.
+
+Voir [docs/security-persistence-report.md](docs/security-persistence-report.md) pour le schema detaille et le test de protection des donnees privees.
+
+## Tests
+
+Lancer les tests avec :
+
+```powershell
+python -m pytest -q
 ```
 
-### Validation
-
-Le champ `topic` :
-
-* doit contenir entre 2 et 100 caractères.
-
-Le champ `nbQuestions` :
-
-* doit être supérieur ou égal à `1` ;
-* doit être inférieur ou égal à `20`.
-
-## 4. Summarise
-
-### `POST /summarise`
-
-Permet de générer un résumé à partir d'un texte.
-
-### Requête
-
-```json
-{
-  "text": "FastAPI est un framework Python permettant de créer des APIs modernes.",
-  "max_bullets": 3
-}
-```
-
-### Réponse
-
-```json
-{
-  "summary": "Summary created with max 3 bullets."
-}
-```
-
-### Validation
-
-Le champ `text` :
-
-* doit contenir entre 10 et 5000 caractères.
-
-Le champ `max_bullets` :
-
-* doit être supérieur ou égal à `1` ;
-* doit être inférieur ou égal à `10`.
-
-# Validation des données
-
-La validation des données est réalisée avec **Pydantic**.
-
-Exemple :
-
-```python
-class ChatModel(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
-```
-
-Cela permet à FastAPI de vérifier automatiquement les données reçues avant l'exécution de la logique de l'endpoint.
-
-En cas de données invalides, l'API retourne une réponse HTTP :
-
-```text
-422 Unprocessable Entity
-```
-
-# Tests
-
-Le projet contient des tests automatisés avec **pytest** et `TestClient`.
-
-Pour lancer les tests :
-
-```bash
-python -m pytest
-```
+Les tests utilisent `TestClient` et verifient notamment le health check et le refus d'une route protegee sans authentification.
 
 Les tests vérifient notamment :
 
